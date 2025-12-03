@@ -1,0 +1,7 @@
+Modelo,Melhor Época,mAP@50,mAP@50-95,Overfitting,Estabilidade,Precision,Recall
+YOLO11_7k,225,99.30%,97.30%,✅ Baixo,⭐ Alta,98.56%,97.52%
+YOLOv5_7k,97,99.30%,97.04%,✅ Baixo,⭐ Alta,98.18%,97.84%
+FasterRCNN_7k,10,98.55%,96.06%,✅ Baixo,⭐ Alta,N/A,97.17%
+YOLOv5_3k,258,97.23%,90.72%,✅ Baixo,⭐ Alta,93.57%,94.91%
+FasterRCNN_3k,11,98.19%,90.00%,✅ Baixo,⭐ Alta,N/A,93.02%
+YOLO11_3k,101,97.58%,89.91%,✅ Baixo,⭐ Alta,96.40%,91.80%

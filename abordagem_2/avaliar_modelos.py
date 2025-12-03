@@ -4,7 +4,7 @@
 🔬 AVALIAÇÃO COMPLETA DOS MODELOS - ABORDAGEM 2
 ==============================================================================
 Script para avaliar os modelos treinados (YOLOv5, YOLO11 e Faster R-CNN)
-gerando métricas, gráficos e matriz de confusão.
+gerando métricas, gráficos, matriz de confusão e matriz de correlação.
 
 Uso:
     python avaliar_modelos.py
@@ -29,7 +29,6 @@ from datetime import datetime
 import torchvision.transforms as T
 from torchvision.models.detection import fasterrcnn_resnet50_fpn
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor
-from sklearn.metrics import classification_report, confusion_matrix
 
 # ==============================================================================
 # 📌 CONFIGURAÇÕES
@@ -139,12 +138,39 @@ def load_ground_truth(label_path, img_w, img_h):
     return np.array(gt_boxes), np.array(gt_classes)
 
 
+def classify_overfitting(train_loss, val_loss):
+    """Classifica o nível de overfitting baseado na razão val/train loss"""
+    if train_loss is None or val_loss is None or train_loss == 0:
+        return "N/A"
+    
+    ratio = val_loss / train_loss
+    if ratio <= 1.2:
+        return "✅ Baixo"
+    elif ratio <= 1.5:
+        return "⚠️ Médio"
+    else:
+        return "❌ Alto"
+
+
+def classify_stability(std_value):
+    """Classifica a estabilidade baseado no desvio padrão do mAP"""
+    if std_value is None:
+        return "N/A"
+    
+    if std_value <= 0.01:
+        return "⭐ Alta"
+    elif std_value <= 0.03:
+        return "🔶 Média"
+    else:
+        return "⚠️ Baixa"
+
+
 # ==============================================================================
-# 📊 ANÁLISE DE HISTÓRICO DE TREINAMENTO (CSV)
+# 📊 ANÁLISE PROFUNDA DO HISTÓRICO DE TREINAMENTO (CSV)
 # ==============================================================================
 
-def analyze_training_history(csv_path, model_name, output_dir):
-    """Analisa CSV de histórico de treinamento e gera gráficos"""
+def analyze_training_history_deep(csv_path, model_name, output_dir):
+    """Analisa CSV de histórico de treinamento com métricas profundas"""
     print(f"\n📈 Analisando histórico: {model_name}")
     
     try:
@@ -157,21 +183,25 @@ def analyze_training_history(csv_path, model_name, output_dir):
     # Identifica colunas relevantes
     epoch_col = 'epoch' if 'epoch' in df.columns else df.columns[0]
     
-    # Detecta tipo de modelo pelo formato das colunas
-    is_yolo = any('metrics' in c.lower() for c in df.columns)
+    # Encontra colunas de métricas
+    map_col = next((c for c in df.columns if 'map50-95' in c.lower() or 'map50_95' in c.lower()), None)
+    map50_col = next((c for c in df.columns if ('map50' in c.lower() and '95' not in c) or 'map50(b)' in c.lower()), None)
+    train_loss_cols = [c for c in df.columns if 'train' in c.lower() and 'loss' in c.lower()]
+    val_loss_cols = [c for c in df.columns if 'val' in c.lower() and 'loss' in c.lower()]
+    prec_col = next((c for c in df.columns if 'precision' in c.lower()), None)
+    rec_col = next((c for c in df.columns if 'recall' in c.lower()), None)
+    lr_col = next((c for c in df.columns if 'lr' in c.lower()), None)
     
+    # === GRÁFICOS DE HISTÓRICO ===
     fig, axes = plt.subplots(2, 2, figsize=(14, 10))
     fig.suptitle(f'Histórico de Treinamento: {model_name}', fontsize=16, fontweight='bold')
     
     # Gráfico 1: mAP
     ax1 = axes[0, 0]
-    map_cols = [c for c in df.columns if 'map50-95' in c.lower() or 'map50_95' in c.lower() or c == 'map50_95']
-    map50_cols = [c for c in df.columns if 'map50(b)' in c.lower() or c == 'map50']
-    
-    if map_cols:
-        ax1.plot(df[epoch_col], df[map_cols[0]], 'b-', linewidth=2, label='mAP@50-95')
-    if map50_cols:
-        ax1.plot(df[epoch_col], df[map50_cols[0]], 'g--', linewidth=2, label='mAP@50')
+    if map_col:
+        ax1.plot(df[epoch_col], df[map_col], 'b-', linewidth=2, label='mAP@50-95')
+    if map50_col:
+        ax1.plot(df[epoch_col], df[map50_col], 'g--', linewidth=2, label='mAP@50')
     ax1.set_xlabel('Época')
     ax1.set_ylabel('mAP')
     ax1.set_title('Evolução do mAP')
@@ -180,8 +210,7 @@ def analyze_training_history(csv_path, model_name, output_dir):
     
     # Gráfico 2: Loss de Treino
     ax2 = axes[0, 1]
-    train_loss_cols = [c for c in df.columns if 'train' in c.lower() and 'loss' in c.lower()]
-    for col in train_loss_cols[:3]:  # Máximo 3 losses
+    for col in train_loss_cols[:3]:
         label = col.replace('train/', '').replace('_', ' ')
         ax2.plot(df[epoch_col], df[col], linewidth=1.5, label=label)
     ax2.set_xlabel('Época')
@@ -192,7 +221,6 @@ def analyze_training_history(csv_path, model_name, output_dir):
     
     # Gráfico 3: Loss de Validação
     ax3 = axes[1, 0]
-    val_loss_cols = [c for c in df.columns if 'val' in c.lower() and 'loss' in c.lower()]
     for col in val_loss_cols[:3]:
         label = col.replace('val/', '').replace('_', ' ')
         ax3.plot(df[epoch_col], df[col], linewidth=1.5, label=label)
@@ -204,13 +232,10 @@ def analyze_training_history(csv_path, model_name, output_dir):
     
     # Gráfico 4: Precision e Recall
     ax4 = axes[1, 1]
-    prec_cols = [c for c in df.columns if 'precision' in c.lower()]
-    rec_cols = [c for c in df.columns if 'recall' in c.lower()]
-    
-    if prec_cols:
-        ax4.plot(df[epoch_col], df[prec_cols[0]], 'b-', linewidth=2, label='Precision')
-    if rec_cols:
-        ax4.plot(df[epoch_col], df[rec_cols[0]], 'r-', linewidth=2, label='Recall')
+    if prec_col:
+        ax4.plot(df[epoch_col], df[prec_col], 'b-', linewidth=2, label='Precision')
+    if rec_col:
+        ax4.plot(df[epoch_col], df[rec_col], 'r-', linewidth=2, label='Recall')
     ax4.set_xlabel('Época')
     ax4.set_ylabel('Valor')
     ax4.set_title('Precision e Recall')
@@ -218,32 +243,305 @@ def analyze_training_history(csv_path, model_name, output_dir):
     ax4.grid(True, alpha=0.3)
     
     plt.tight_layout()
-    
-    # Salva gráfico
     save_path = output_dir / f"historico_{model_name}.png"
     plt.savefig(save_path)
     plt.close()
-    print(f"   ✅ Gráfico salvo: {save_path}")
+    print(f"   ✅ Gráfico de histórico salvo: {save_path}")
     
-    # Retorna estatísticas
+    # === CÁLCULO DE MÉTRICAS ===
+    best_idx = df[map_col].idxmax() if map_col else 0
+    best_row = df.loc[best_idx]
+    
+    # Loss final e da melhor época
+    final_train_loss = df[train_loss_cols[0]].iloc[-1] if train_loss_cols else None
+    final_val_loss = df[val_loss_cols[0]].iloc[-1] if val_loss_cols else None
+    best_train_loss = best_row[train_loss_cols[0]] if train_loss_cols else None
+    best_val_loss = best_row[val_loss_cols[0]] if val_loss_cols else None
+    
+    # Estabilidade (desvio padrão das últimas 10 épocas)
+    stability_std = df[map_col].tail(10).std() if map_col else None
+    
+    # Overfitting na melhor época
+    overfitting_value = (best_val_loss - best_train_loss) if best_train_loss and best_val_loss else None
+    
     stats = {
         'modelo': model_name,
         'epochs': len(df),
-        'best_map50_95': df[map_cols[0]].max() if map_cols else None,
-        'best_map50': df[map50_cols[0]].max() if map50_cols else None,
-        'final_train_loss': df[train_loss_cols[0]].iloc[-1] if train_loss_cols else None,
-        'final_val_loss': df[val_loss_cols[0]].iloc[-1] if val_loss_cols else None,
+        'best_epoch': int(best_row[epoch_col]),
+        'best_map50_95': round(best_row[map_col], 4) if map_col else None,
+        'best_map50': round(best_row[map50_col], 4) if map50_col else None,
+        'precision': round(best_row[prec_col], 4) if prec_col else None,
+        'recall': round(best_row[rec_col], 4) if rec_col else None,
+        'best_train_loss': round(best_train_loss, 6) if best_train_loss else None,
+        'best_val_loss': round(best_val_loss, 6) if best_val_loss else None,
+        'overfitting_value': round(overfitting_value, 6) if overfitting_value else None,
+        'overfitting_class': classify_overfitting(best_train_loss, best_val_loss),
+        'stability_std': round(stability_std, 6) if stability_std else None,
+        'stability_class': classify_stability(stability_std),
     }
     
-    return stats
+    return stats, df
 
 
 # ==============================================================================
-# 🎯 MATRIZ DE CONFUSÃO E MÉTRICAS
+# 🔗 MATRIZ DE CORRELAÇÃO ENTRE MÉTRICAS
 # ==============================================================================
 
-def evaluate_model(weights_path, model_type, dataset_yaml, model_name, output_dir, iou_threshold=0.5, conf_threshold=0.5):
-    """Avalia modelo gerando matriz de confusão e métricas detalhadas"""
+def generate_correlation_matrix(all_dfs, output_dir):
+    """Gera matriz de correlação entre métricas de todos os modelos"""
+    print("\n🔗 Gerando Matriz de Correlação...")
+    
+    if not all_dfs:
+        print("   ⚠️ Sem dados para correlação")
+        return
+    
+    # Coleta métricas comuns de todos os modelos
+    correlation_data = []
+    
+    for model_name, df in all_dfs.items():
+        # Normaliza nomes de colunas
+        cols = df.columns
+        
+        map_col = next((c for c in cols if 'map50-95' in c.lower() or 'map50_95' in c.lower()), None)
+        map50_col = next((c for c in cols if ('map50' in c.lower() and '95' not in c)), None)
+        prec_col = next((c for c in cols if 'precision' in c.lower()), None)
+        rec_col = next((c for c in cols if 'recall' in c.lower()), None)
+        train_box = next((c for c in cols if 'train' in c.lower() and 'box' in c.lower()), None)
+        val_box = next((c for c in cols if 'val' in c.lower() and 'box' in c.lower()), None)
+        
+        # Pega valores da melhor época
+        if map_col:
+            best_idx = df[map_col].idxmax()
+            row = df.loc[best_idx]
+            
+            correlation_data.append({
+                'Modelo': model_name,
+                'mAP@50-95': row[map_col] if map_col else None,
+                'mAP@50': row[map50_col] if map50_col else None,
+                'Precision': row[prec_col] if prec_col else None,
+                'Recall': row[rec_col] if rec_col else None,
+                'Train_Box_Loss': row[train_box] if train_box else None,
+                'Val_Box_Loss': row[val_box] if val_box else None,
+            })
+    
+    if not correlation_data:
+        return
+    
+    df_corr_data = pd.DataFrame(correlation_data)
+    
+    # Remove colunas com muitos NaN
+    numeric_cols = df_corr_data.select_dtypes(include=[np.number]).columns
+    df_numeric = df_corr_data[numeric_cols].dropna(axis=1, how='all')
+    
+    if df_numeric.empty or len(df_numeric.columns) < 2:
+        print("   ⚠️ Dados insuficientes para correlação")
+        return
+    
+    # Calcula matriz de correlação
+    corr_matrix = df_numeric.corr()
+    
+    # Plota matriz de correlação
+    fig, ax = plt.subplots(figsize=(10, 8))
+    mask = np.triu(np.ones_like(corr_matrix, dtype=bool))  # Máscara para triângulo superior
+    
+    sns.heatmap(
+        corr_matrix,
+        mask=mask,
+        annot=True,
+        fmt='.2f',
+        cmap='RdBu_r',
+        center=0,
+        square=True,
+        linewidths=0.5,
+        cbar_kws={"shrink": 0.8},
+        ax=ax
+    )
+    
+    ax.set_title('Matriz de Correlação entre Métricas', fontsize=14, fontweight='bold')
+    plt.tight_layout()
+    
+    save_path = output_dir / "matriz_correlacao.png"
+    plt.savefig(save_path)
+    plt.close()
+    print(f"   ✅ Matriz de correlação salva: {save_path}")
+    
+    # Salva dados de correlação
+    csv_path = output_dir / "dados_correlacao.csv"
+    df_corr_data.to_csv(csv_path, index=False)
+    
+    return corr_matrix
+
+
+# ==============================================================================
+# 📊 ANÁLISE COMPARATIVA DE EVOLUÇÃO
+# ==============================================================================
+
+def generate_evolution_comparison(all_dfs, output_dir):
+    """Gera gráfico comparativo da evolução de todos os modelos"""
+    print("\n📊 Gerando Comparativo de Evolução...")
+    
+    if not all_dfs:
+        return
+    
+    # Separa por dataset (3k e 7k)
+    for dataset_size in ['3k', '7k']:
+        subset_dfs = {k: v for k, v in all_dfs.items() if dataset_size in k}
+        
+        if not subset_dfs:
+            continue
+        
+        fig, axes = plt.subplots(1, 2, figsize=(14, 5))
+        fig.suptitle(f'Comparativo de Evolução - Dataset {dataset_size.upper()}', fontsize=14, fontweight='bold')
+        
+        # Gráfico 1: Evolução mAP@50-95
+        ax1 = axes[0]
+        for model_name, df in subset_dfs.items():
+            map_col = next((c for c in df.columns if 'map50-95' in c.lower() or 'map50_95' in c.lower()), None)
+            if map_col:
+                ax1.plot(df['epoch'], df[map_col], linewidth=2, label=model_name)
+        
+        ax1.set_xlabel('Época')
+        ax1.set_ylabel('mAP@50-95')
+        ax1.set_title('Evolução do mAP@50-95')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        
+        # Gráfico 2: Evolução da Loss de Validação
+        ax2 = axes[1]
+        for model_name, df in subset_dfs.items():
+            val_loss_col = next((c for c in df.columns if 'val' in c.lower() and 'box' in c.lower()), None)
+            if val_loss_col:
+                ax2.plot(df['epoch'], df[val_loss_col], linewidth=2, label=model_name)
+        
+        ax2.set_xlabel('Época')
+        ax2.set_ylabel('Validation Box Loss')
+        ax2.set_title('Evolução da Loss de Validação')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        save_path = output_dir / f"evolucao_comparativa_{dataset_size}.png"
+        plt.savefig(save_path)
+        plt.close()
+        print(f"   ✅ Comparativo {dataset_size} salvo: {save_path}")
+
+
+# ==============================================================================
+# 📋 TABELA RESUMO FINAL
+# ==============================================================================
+
+def generate_summary_table(all_stats, output_dir):
+    """Gera tabela resumo com todas as métricas solicitadas"""
+    print("\n📋 Gerando Tabela Resumo Final...")
+    
+    if not all_stats:
+        return None
+    
+    valid_stats = [s for s in all_stats if s]
+    
+    # Cria DataFrame com formato específico
+    summary_data = []
+    for stat in valid_stats:
+        summary_data.append({
+            'Modelo': stat['modelo'],
+            'Melhor Época': stat.get('best_epoch', 'N/A'),
+            'mAP@50': f"{stat.get('best_map50', 0)*100:.2f}%" if stat.get('best_map50') else 'N/A',
+            'mAP@50-95': f"{stat.get('best_map50_95', 0)*100:.2f}%" if stat.get('best_map50_95') else 'N/A',
+            'Overfitting': stat.get('overfitting_class', 'N/A'),
+            'Estabilidade': stat.get('stability_class', 'N/A'),
+            'Precision': f"{stat.get('precision', 0)*100:.2f}%" if stat.get('precision') else 'N/A',
+            'Recall': f"{stat.get('recall', 0)*100:.2f}%" if stat.get('recall') else 'N/A',
+        })
+    
+    df_summary = pd.DataFrame(summary_data)
+    
+    # Ordena por mAP@50-95 (convertendo de volta para número para ordenação)
+    df_summary['_sort'] = df_summary['mAP@50-95'].apply(
+        lambda x: float(x.replace('%', '')) if x != 'N/A' else 0
+    )
+    df_summary = df_summary.sort_values('_sort', ascending=False).drop('_sort', axis=1)
+    
+    # Salva CSV
+    csv_path = output_dir / "tabela_resumo_modelos.csv"
+    df_summary.to_csv(csv_path, index=False)
+    print(f"   ✅ Tabela resumo salva: {csv_path}")
+    
+    # Exibe no console
+    print("\n" + "="*100)
+    print("📊 TABELA RESUMO - TODOS OS MODELOS")
+    print("="*100)
+    print(df_summary.to_string(index=False))
+    print("="*100)
+    
+    return df_summary
+
+
+# ==============================================================================
+# 📊 GRÁFICO DE BARRAS COMPARATIVO
+# ==============================================================================
+
+def generate_bar_comparison(all_stats, output_dir):
+    """Gera gráfico de barras comparativo final"""
+    print("\n📊 Gerando Gráfico Comparativo Final...")
+    
+    if not all_stats:
+        return
+    
+    valid_stats = [s for s in all_stats if s and s.get('best_map50_95')]
+    
+    if not valid_stats:
+        return
+    
+    # Prepara dados
+    models = [s['modelo'] for s in valid_stats]
+    map50_95 = [s.get('best_map50_95', 0) for s in valid_stats]
+    map50 = [s.get('best_map50', 0) for s in valid_stats]
+    precision = [s.get('precision', 0) or 0 for s in valid_stats]
+    recall = [s.get('recall', 0) or 0 for s in valid_stats]
+    
+    x = np.arange(len(models))
+    width = 0.2
+    
+    fig, ax = plt.subplots(figsize=(14, 6))
+    
+    bars1 = ax.bar(x - 1.5*width, map50_95, width, label='mAP@50-95', color='#3498db')
+    bars2 = ax.bar(x - 0.5*width, map50, width, label='mAP@50', color='#2ecc71')
+    bars3 = ax.bar(x + 0.5*width, precision, width, label='Precision', color='#e74c3c')
+    bars4 = ax.bar(x + 1.5*width, recall, width, label='Recall', color='#f39c12')
+    
+    ax.set_xlabel('Modelo', fontsize=12)
+    ax.set_ylabel('Score', fontsize=12)
+    ax.set_title('Comparativo Final de Métricas - Abordagem 2', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(models, rotation=45, ha='right')
+    ax.legend(loc='lower right')
+    ax.set_ylim(0, 1.1)
+    ax.grid(True, alpha=0.3, axis='y')
+    
+    # Adiciona valores nas barras
+    for bars in [bars1, bars2, bars3, bars4]:
+        for bar in bars:
+            height = bar.get_height()
+            if height > 0:
+                ax.annotate(f'{height:.2f}',
+                            xy=(bar.get_x() + bar.get_width() / 2, height),
+                            xytext=(0, 3),
+                            textcoords="offset points",
+                            ha='center', va='bottom', fontsize=8, rotation=90)
+    
+    plt.tight_layout()
+    save_path = output_dir / "comparativo_barras_final.png"
+    plt.savefig(save_path)
+    plt.close()
+    print(f"   ✅ Gráfico de barras salvo: {save_path}")
+
+
+# ==============================================================================
+# 🎯 MATRIZ DE CONFUSÃO (quando dataset disponível)
+# ==============================================================================
+
+def evaluate_model_with_confusion(weights_path, model_type, dataset_yaml, model_name, output_dir, iou_threshold=0.5, conf_threshold=0.5):
+    """Avalia modelo gerando matriz de confusão (requer dataset)"""
     print(f"\n🎯 Avaliando modelo: {model_name}")
     
     # Carrega configuração do dataset
@@ -263,8 +561,8 @@ def evaluate_model(weights_path, model_type, dataset_yaml, model_name, output_di
             break
     
     if val_dir is None:
-        print(f"   ⚠️ Diretório de validação não encontrado. Tentando: {val_dirs}")
-        print(f"   ℹ️ Certifique-se de que o dataset está em: {cfg['path']}")
+        print(f"   ⚠️ Dataset não encontrado. Matriz de confusão não será gerada.")
+        print(f"   ℹ️ Esperado em: {cfg['path']}")
         return None
     
     img_files = sorted(glob.glob(os.path.join(val_dir, "*.*")))
@@ -286,32 +584,20 @@ def evaluate_model(weights_path, model_type, dataset_yaml, model_name, output_di
         print(f"   ❌ Erro ao carregar modelo: {e}")
         return None
     
-    # Matriz de confusão (Linhas: GT, Colunas: Pred)
-    # Última linha/coluna = Background (FN/FP)
+    # Matriz de confusão
     matrix = np.zeros((N_CLASSES + 1, N_CLASSES + 1), dtype=int)
     
-    all_gt_classes = []
-    all_pred_classes = []
-    all_scores = []
-    
-    tp_per_class = np.zeros(N_CLASSES)
-    fp_per_class = np.zeros(N_CLASSES)
-    fn_per_class = np.zeros(N_CLASSES)
-    
     for img_file in tqdm(img_files, desc=f"   Validando {model_name}", leave=False):
-        # Carrega ground truth
         img = Image.open(img_file)
         img_w, img_h = img.size
         label_file = img_file.replace('images', 'labels').rsplit('.', 1)[0] + '.txt'
         gt_boxes, gt_classes = load_ground_truth(label_file, img_w, img_h)
         
-        # Obtém predições
         pred_boxes, pred_classes, pred_scores = get_predictions(model, model_type, img_file, conf_threshold)
         
         matched_gt = set()
         matched_pred = set()
         
-        # Matching com IoU
         if len(gt_boxes) > 0 and len(pred_boxes) > 0:
             ious = box_iou(gt_boxes, pred_boxes)
             
@@ -331,32 +617,16 @@ def evaluate_model(weights_path, model_type, dataset_yaml, model_name, output_di
                     matrix[g_cls, p_cls] += 1
                     matched_gt.add(g_idx)
                     matched_pred.add(best_p_idx)
-                    
-                    if g_cls == p_cls:
-                        tp_per_class[g_cls] += 1
-                    else:
-                        fp_per_class[p_cls] += 1
-                        fn_per_class[g_cls] += 1
-                    
-                    all_gt_classes.append(g_cls)
-                    all_pred_classes.append(p_cls)
-                    all_scores.append(pred_scores[best_p_idx])
         
-        # False Negatives (GT não matched)
         for g_idx, g_cls in enumerate(gt_classes):
             if g_idx not in matched_gt:
                 matrix[g_cls, N_CLASSES] += 1
-                fn_per_class[g_cls] += 1
         
-        # False Positives (Pred não matched)
         for p_idx, p_cls in enumerate(pred_classes):
             if p_idx not in matched_pred:
                 matrix[N_CLASSES, p_cls] += 1
-                fp_per_class[p_cls] += 1
     
-    # ==== GERA VISUALIZAÇÕES ====
-    
-    # 1. Matriz de Confusão
+    # Plota matriz de confusão
     fig, ax = plt.subplots(figsize=(10, 8))
     labels = CLASS_NAMES + ['Background']
     sns.heatmap(matrix, annot=True, fmt='d', cmap='Blues', 
@@ -371,178 +641,7 @@ def evaluate_model(weights_path, model_type, dataset_yaml, model_name, output_di
     plt.close()
     print(f"   ✅ Matriz de confusão salva: {save_path}")
     
-    # 2. Gráfico de Métricas por Classe
-    metrics_per_class = []
-    for i, name in enumerate(CLASS_NAMES):
-        tp = tp_per_class[i]
-        fp = fp_per_class[i]
-        fn = fn_per_class[i]
-        
-        precision = tp / (tp + fp + 1e-6)
-        recall = tp / (tp + fn + 1e-6)
-        f1 = 2 * precision * recall / (precision + recall + 1e-6)
-        
-        metrics_per_class.append({
-            'Classe': name,
-            'Precision': round(precision, 4),
-            'Recall': round(recall, 4),
-            'F1-Score': round(f1, 4),
-            'TP': int(tp),
-            'FP': int(fp),
-            'FN': int(fn),
-            'Support': int(tp + fn)
-        })
-    
-    df_metrics = pd.DataFrame(metrics_per_class)
-    
-    # Gráfico de barras
-    fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    
-    x = np.arange(N_CLASSES)
-    width = 0.25
-    
-    ax1 = axes[0]
-    ax1.bar(x - width, df_metrics['Precision'], width, label='Precision', color='steelblue')
-    ax1.bar(x, df_metrics['Recall'], width, label='Recall', color='coral')
-    ax1.bar(x + width, df_metrics['F1-Score'], width, label='F1-Score', color='seagreen')
-    ax1.set_xlabel('Classe')
-    ax1.set_ylabel('Score')
-    ax1.set_title(f'Métricas por Classe: {model_name}')
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(CLASS_NAMES, rotation=45, ha='right')
-    ax1.legend()
-    ax1.set_ylim(0, 1.1)
-    ax1.grid(True, alpha=0.3, axis='y')
-    
-    # Gráfico de suporte (quantidade de amostras)
-    ax2 = axes[1]
-    colors = ['#2ecc71', '#e74c3c', '#f39c12']
-    ax2.bar(x - width, df_metrics['TP'], width, label='TP', color=colors[0])
-    ax2.bar(x, df_metrics['FP'], width, label='FP', color=colors[1])
-    ax2.bar(x + width, df_metrics['FN'], width, label='FN', color=colors[2])
-    ax2.set_xlabel('Classe')
-    ax2.set_ylabel('Quantidade')
-    ax2.set_title('Detecções por Classe')
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(CLASS_NAMES, rotation=45, ha='right')
-    ax2.legend()
-    ax2.grid(True, alpha=0.3, axis='y')
-    
-    plt.tight_layout()
-    save_path = output_dir / f"metricas_{model_name}.png"
-    plt.savefig(save_path)
-    plt.close()
-    print(f"   ✅ Gráfico de métricas salvo: {save_path}")
-    
-    # Calcula métricas globais
-    total_tp = tp_per_class.sum()
-    total_fp = fp_per_class.sum()
-    total_fn = fn_per_class.sum()
-    
-    global_precision = total_tp / (total_tp + total_fp + 1e-6)
-    global_recall = total_tp / (total_tp + total_fn + 1e-6)
-    global_f1 = 2 * global_precision * global_recall / (global_precision + global_recall + 1e-6)
-    
-    results = {
-        'modelo': model_name,
-        'precision_global': round(global_precision, 4),
-        'recall_global': round(global_recall, 4),
-        'f1_global': round(global_f1, 4),
-        'total_tp': int(total_tp),
-        'total_fp': int(total_fp),
-        'total_fn': int(total_fn),
-        'metricas_classe': df_metrics.to_dict('records')
-    }
-    
-    # Salva tabela de métricas
-    csv_path = output_dir / f"metricas_{model_name}.csv"
-    df_metrics.to_csv(csv_path, index=False)
-    print(f"   ✅ Tabela de métricas salva: {csv_path}")
-    
-    return results
-
-
-# ==============================================================================
-# 📋 RELATÓRIO COMPARATIVO
-# ==============================================================================
-
-def generate_comparison_report(all_results, all_stats, output_dir):
-    """Gera relatório comparativo entre todos os modelos"""
-    print("\n" + "="*60)
-    print("📋 GERANDO RELATÓRIO COMPARATIVO")
-    print("="*60)
-    
-    # Tabela comparativa de avaliação
-    if all_results:
-        df_comparison = pd.DataFrame([{
-            'Modelo': r['modelo'],
-            'Precision': r['precision_global'],
-            'Recall': r['recall_global'],
-            'F1-Score': r['f1_global'],
-            'TP': r['total_tp'],
-            'FP': r['total_fp'],
-            'FN': r['total_fn']
-        } for r in all_results if r])
-        
-        if not df_comparison.empty:
-            # Ordena por F1-Score
-            df_comparison = df_comparison.sort_values('F1-Score', ascending=False)
-            
-            print("\n📊 Comparativo de Métricas (ordenado por F1-Score):")
-            print(df_comparison.to_string(index=False))
-            
-            # Salva CSV
-            csv_path = output_dir / "comparativo_modelos.csv"
-            df_comparison.to_csv(csv_path, index=False)
-            
-            # Gráfico comparativo
-            fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-            
-            # Gráfico de barras - Métricas
-            ax1 = axes[0]
-            x = np.arange(len(df_comparison))
-            width = 0.25
-            ax1.bar(x - width, df_comparison['Precision'], width, label='Precision', color='steelblue')
-            ax1.bar(x, df_comparison['Recall'], width, label='Recall', color='coral')
-            ax1.bar(x + width, df_comparison['F1-Score'], width, label='F1-Score', color='seagreen')
-            ax1.set_xlabel('Modelo')
-            ax1.set_ylabel('Score')
-            ax1.set_title('Comparativo de Métricas entre Modelos')
-            ax1.set_xticks(x)
-            ax1.set_xticklabels(df_comparison['Modelo'], rotation=45, ha='right')
-            ax1.legend()
-            ax1.set_ylim(0, 1.1)
-            ax1.grid(True, alpha=0.3, axis='y')
-            
-            # Gráfico de barras - TP/FP/FN
-            ax2 = axes[1]
-            ax2.bar(x - width, df_comparison['TP'], width, label='TP', color='#2ecc71')
-            ax2.bar(x, df_comparison['FP'], width, label='FP', color='#e74c3c')
-            ax2.bar(x + width, df_comparison['FN'], width, label='FN', color='#f39c12')
-            ax2.set_xlabel('Modelo')
-            ax2.set_ylabel('Quantidade')
-            ax2.set_title('Total de Detecções por Modelo')
-            ax2.set_xticks(x)
-            ax2.set_xticklabels(df_comparison['Modelo'], rotation=45, ha='right')
-            ax2.legend()
-            ax2.grid(True, alpha=0.3, axis='y')
-            
-            plt.tight_layout()
-            save_path = output_dir / "comparativo_modelos.png"
-            plt.savefig(save_path)
-            plt.close()
-            print(f"\n✅ Gráfico comparativo salvo: {save_path}")
-    
-    # Tabela de histórico de treinamento
-    if all_stats:
-        valid_stats = [s for s in all_stats if s]
-        if valid_stats:
-            df_stats = pd.DataFrame(valid_stats)
-            print("\n📈 Histórico de Treinamento:")
-            print(df_stats.to_string(index=False))
-            
-            csv_path = output_dir / "historico_treinamento.csv"
-            df_stats.to_csv(csv_path, index=False)
+    return matrix
 
 
 # ==============================================================================
@@ -556,100 +655,79 @@ def main():
     print(f"📅 Data: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"📁 Diretório de saída: {OUTPUT_DIR}")
     
-    all_results = []
     all_stats = []
+    all_dfs = {}
     
     # Define os modelos a avaliar
     models_config = [
         # YOLOv5
-        {
-            'weights': ABORDAGEM_DIR / 'yolo5' / 'yolo5_best_abordagem_2_3k.pt',
-            'csv': ABORDAGEM_DIR / 'yolo5' / 'yolo5_results_abordagem_2_3k.csv' if (ABORDAGEM_DIR / 'yolo5' / 'yolo5_results_abordagem_2_3k.csv').exists() else None,
-            'type': 'yolo',
-            'dataset': '3k',
-            'name': 'YOLOv5_3k'
-        },
-        {
-            'weights': ABORDAGEM_DIR / 'yolo5' / 'yolo5_best_abordagem_2_7k.pt',
-            'csv': ABORDAGEM_DIR / 'yolo5' / 'yolo5_results_abordagem_2_7k.csv' if (ABORDAGEM_DIR / 'yolo5' / 'yolo5_results_abordagem_2_7k.csv').exists() else None,
-            'type': 'yolo',
-            'dataset': '7k',
-            'name': 'YOLOv5_7k'
-        },
+        {'csv': ABORDAGEM_DIR / 'yolo5' / 'yolo5_results_abordagem_2_3k.csv', 'weights': ABORDAGEM_DIR / 'yolo5' / 'yolo5_best_abordagem_2_3k.pt', 'type': 'yolo', 'dataset': '3k', 'name': 'YOLOv5_3k'},
+        {'csv': ABORDAGEM_DIR / 'yolo5' / 'yolo5_results_abordagem_2_7k.csv', 'weights': ABORDAGEM_DIR / 'yolo5' / 'yolo5_best_abordagem_2_7k.pt', 'type': 'yolo', 'dataset': '7k', 'name': 'YOLOv5_7k'},
         # YOLO11
-        {
-            'weights': ABORDAGEM_DIR / 'yolo11' / 'yolo11_best_abordagem_2_3k.pt',
-            'csv': ABORDAGEM_DIR / 'yolo11' / 'yolo11_results_abordagem_2_3k.csv',
-            'type': 'yolo',
-            'dataset': '3k',
-            'name': 'YOLO11_3k'
-        },
-        {
-            'weights': ABORDAGEM_DIR / 'yolo11' / 'yolo11_best_abordagem_2_7k.pt',
-            'csv': ABORDAGEM_DIR / 'yolo11' / 'yolo11_results_abordagem_2_7k.csv',
-            'type': 'yolo',
-            'dataset': '7k',
-            'name': 'YOLO11_7k'
-        },
+        {'csv': ABORDAGEM_DIR / 'yolo11' / 'yolo11_results_abordagem_2_3k.csv', 'weights': ABORDAGEM_DIR / 'yolo11' / 'yolo11_best_abordagem_2_3k.pt', 'type': 'yolo', 'dataset': '3k', 'name': 'YOLO11_3k'},
+        {'csv': ABORDAGEM_DIR / 'yolo11' / 'yolo11_results_abordagem_2_7k.csv', 'weights': ABORDAGEM_DIR / 'yolo11' / 'yolo11_best_abordagem_2_7k.pt', 'type': 'yolo', 'dataset': '7k', 'name': 'YOLO11_7k'},
         # Faster R-CNN
-        {
-            'weights': ABORDAGEM_DIR / 'faster' / 'faster_best_abordagem_2_3k.pth',
-            'csv': ABORDAGEM_DIR / 'faster' / 'faster_results_abordagem_2_3k.csv',
-            'type': 'faster',
-            'dataset': '3k',
-            'name': 'FasterRCNN_3k'
-        },
-        {
-            'weights': ABORDAGEM_DIR / 'faster' / 'faster_best_abordagem_2_7k.pth',
-            'csv': ABORDAGEM_DIR / 'faster' / 'faster_results_abordagem_2_7k.csv',
-            'type': 'faster',
-            'dataset': '7k',
-            'name': 'FasterRCNN_7k'
-        },
+        {'csv': ABORDAGEM_DIR / 'faster' / 'faster_results_abordagem_2_3k.csv', 'weights': ABORDAGEM_DIR / 'faster' / 'faster_best_abordagem_2_3k.pth', 'type': 'faster', 'dataset': '3k', 'name': 'FasterRCNN_3k'},
+        {'csv': ABORDAGEM_DIR / 'faster' / 'faster_results_abordagem_2_7k.csv', 'weights': ABORDAGEM_DIR / 'faster' / 'faster_best_abordagem_2_7k.pth', 'type': 'faster', 'dataset': '7k', 'name': 'FasterRCNN_7k'},
     ]
     
-    # Processa cada modelo
+    # 1. Analisa histórico de cada modelo
+    for config in models_config:
+        csv_path = config['csv']
+        model_name = config['name']
+        
+        if csv_path.exists():
+            stats, df = analyze_training_history_deep(csv_path, model_name, OUTPUT_DIR)
+            if stats:
+                all_stats.append(stats)
+            if df is not None:
+                all_dfs[model_name] = df
+        else:
+            print(f"\n⚠️ CSV não encontrado: {csv_path}")
+    
+    # 2. Gera análises comparativas
+    generate_evolution_comparison(all_dfs, OUTPUT_DIR)
+    generate_correlation_matrix(all_dfs, OUTPUT_DIR)
+    generate_bar_comparison(all_stats, OUTPUT_DIR)
+    
+    # 3. Gera tabela resumo final (CSV solicitado)
+    df_summary = generate_summary_table(all_stats, OUTPUT_DIR)
+    
+    # 4. Tenta gerar matrizes de confusão (se dataset disponível)
+    print("\n" + "="*60)
+    print("🎯 TENTANDO GERAR MATRIZES DE CONFUSÃO (requer dataset)")
+    print("="*60)
+    
     for config in models_config:
         weights_path = config['weights']
-        csv_path = config.get('csv')
         model_type = config['type']
         dataset = config['dataset']
         model_name = config['name']
-        
-        # Verifica se arquivo de pesos existe
-        if not weights_path.exists():
-            print(f"\n⚠️ Pesos não encontrados: {weights_path}")
-            continue
-        
-        # Define YAML do dataset
         yaml_path = PROJECT_ROOT / f"data_{dataset}.yaml"
         
-        # 1. Analisa histórico de treinamento (CSV)
-        if csv_path and Path(csv_path).exists():
-            stats = analyze_training_history(csv_path, model_name, OUTPUT_DIR)
-            all_stats.append(stats)
-        
-        # 2. Avalia modelo (matriz de confusão e métricas)
-        results = evaluate_model(
-            weights_path=str(weights_path),
-            model_type=model_type,
-            dataset_yaml=str(yaml_path),
-            model_name=model_name,
-            output_dir=OUTPUT_DIR
-        )
-        all_results.append(results)
+        if weights_path.exists():
+            evaluate_model_with_confusion(
+                weights_path=str(weights_path),
+                model_type=model_type,
+                dataset_yaml=str(yaml_path),
+                model_name=model_name,
+                output_dir=OUTPUT_DIR
+            )
     
-    # 3. Gera relatório comparativo
-    generate_comparison_report(all_results, all_stats, OUTPUT_DIR)
+    # 5. Salva histórico detalhado
+    if all_stats:
+        df_detailed = pd.DataFrame(all_stats)
+        csv_path = OUTPUT_DIR / "historico_detalhado.csv"
+        df_detailed.to_csv(csv_path, index=False)
+        print(f"\n✅ Histórico detalhado salvo: {csv_path}")
     
     print("\n" + "="*60)
     print("✅ AVALIAÇÃO CONCLUÍDA!")
     print(f"📁 Resultados salvos em: {OUTPUT_DIR}")
     print("="*60)
     
-    return all_results, all_stats
+    return all_stats, all_dfs
 
 
 if __name__ == "__main__":
-    results, stats = main()
-
+    stats, dfs = main()
