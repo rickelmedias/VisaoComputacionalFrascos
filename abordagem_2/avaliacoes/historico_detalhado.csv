@@ -1,7 +1,7 @@
-modelo,epochs,best_epoch,best_map50_95,best_map50,precision,recall,best_train_loss,best_val_loss,overfitting_value,overfitting_class,stability_std,stability_class
-YOLOv5_3k,288,258,0.9072,0.9723,0.9357,0.9491,0.36337,0.34285,-0.02052,✅ Baixo,0.001659,⭐ Alta
-YOLOv5_7k,127,97,0.9704,0.993,0.9818,0.9784,0.2726,0.1937,-0.0789,✅ Baixo,0.000437,⭐ Alta
-YOLO11_3k,131,101,0.8991,0.9758,0.964,0.918,0.43024,0.36482,-0.06542,✅ Baixo,0.004497,⭐ Alta
-YOLO11_7k,178,225,0.973,0.993,0.9856,0.9752,0.22147,0.17069,-0.05078,✅ Baixo,4e-05,⭐ Alta
-FasterRCNN_3k,42,11,0.9,0.9819,0.0,0.9302,0.04483,0.029629,-0.015201,✅ Baixo,,⭐ Alta
-FasterRCNN_7k,30,10,0.9606,0.9855,0.0,0.9717,0.017755,0.013056,-0.004699,✅ Baixo,5e-06,⭐ Alta
+modelo,epochs,best_epoch,best_map50_95,best_map50,precision,recall,best_train_loss,best_val_loss,overfitting_value,overfitting_ratio,overfitting_class,stability_std,stability_class
+YOLOv5_3k,288,258,0.9072,0.9723,0.9357,0.9491,0.36337,0.34285,-0.02052,0.9435,✅ Baixo,0.001659,⭐ Alta
+YOLOv5_7k,127,97,0.9704,0.993,0.9818,0.9784,0.2726,0.1937,-0.0789,0.7106,✅ Baixo,0.000437,⭐ Alta
+YOLO11_3k,131,101,0.8991,0.9758,0.964,0.918,0.43024,0.36482,-0.06542,0.8479,✅ Baixo,0.004497,⭐ Alta
+YOLO11_7k,178,225,0.973,0.993,0.9856,0.9752,0.22147,0.17069,-0.05078,0.7707,✅ Baixo,4e-05,⭐ Alta
+FasterRCNN_3k,42,11,0.9,0.9819,0.0,0.9302,0.04483,0.029629,-0.015201,0.6609,✅ Baixo,,⭐ Alta
+FasterRCNN_7k,30,10,0.9606,0.9855,0.0,0.9717,0.017755,0.013056,-0.004699,0.7353,✅ Baixo,5e-06,⭐ Alta

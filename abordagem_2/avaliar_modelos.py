@@ -141,28 +141,28 @@ def load_ground_truth(label_path, img_w, img_h):
 def classify_overfitting(train_loss, val_loss):
     """Classifica o nível de overfitting baseado na razão val/train loss"""
     if train_loss is None or val_loss is None or train_loss == 0:
-        return "N/A"
+        return "N/A", None
     
     ratio = val_loss / train_loss
     if ratio <= 1.2:
-        return "✅ Baixo"
+        return "✅ Baixo", ratio
     elif ratio <= 1.5:
-        return "⚠️ Médio"
+        return "⚠️ Médio", ratio
     else:
-        return "❌ Alto"
+        return "❌ Alto", ratio
 
 
 def classify_stability(std_value):
     """Classifica a estabilidade baseado no desvio padrão do mAP"""
     if std_value is None:
-        return "N/A"
+        return "N/A", None
     
     if std_value <= 0.01:
-        return "⭐ Alta"
+        return "⭐ Alta", std_value
     elif std_value <= 0.03:
-        return "🔶 Média"
+        return "🔶 Média", std_value
     else:
-        return "⚠️ Baixa"
+        return "⚠️ Baixa", std_value
 
 
 # ==============================================================================
@@ -264,6 +264,10 @@ def analyze_training_history_deep(csv_path, model_name, output_dir):
     # Overfitting na melhor época
     overfitting_value = (best_val_loss - best_train_loss) if best_train_loss and best_val_loss else None
     
+    # Calcula classificações com valores
+    overfitting_class, overfitting_ratio = classify_overfitting(best_train_loss, best_val_loss)
+    stability_class, stability_value = classify_stability(stability_std)
+    
     stats = {
         'modelo': model_name,
         'epochs': len(df),
@@ -275,9 +279,10 @@ def analyze_training_history_deep(csv_path, model_name, output_dir):
         'best_train_loss': round(best_train_loss, 6) if best_train_loss else None,
         'best_val_loss': round(best_val_loss, 6) if best_val_loss else None,
         'overfitting_value': round(overfitting_value, 6) if overfitting_value else None,
-        'overfitting_class': classify_overfitting(best_train_loss, best_val_loss),
+        'overfitting_ratio': round(overfitting_ratio, 4) if overfitting_ratio else None,
+        'overfitting_class': overfitting_class,
         'stability_std': round(stability_std, 6) if stability_std else None,
-        'stability_class': classify_stability(stability_std),
+        'stability_class': stability_class,
     }
     
     return stats, df
@@ -352,17 +357,29 @@ def generate_summary_table(all_stats, output_dir):
     
     valid_stats = [s for s in all_stats if s]
     
-    # Cria DataFrame com formato específico
+    # Cria DataFrame com formato específico - valores numéricos para avaliação
     summary_data = []
     for stat in valid_stats:
+        # Overfitting ratio (val_loss / train_loss) - quanto menor, melhor
+        overfitting_ratio = stat.get('overfitting_ratio')
+        overfitting_str = f"{overfitting_ratio:.4f}" if overfitting_ratio else 'N/A'
+        
+        # Estabilidade (std do mAP) - quanto menor, melhor
+        stability_std = stat.get('stability_std')
+        stability_str = f"{stability_std:.6f}" if stability_std else 'N/A'
+        
+        # Precision - verificar se é válido (> 0)
+        precision_val = stat.get('precision')
+        precision_str = f"{precision_val*100:.2f}%" if precision_val and precision_val > 0 else 'N/A*'
+        
         summary_data.append({
             'Modelo': stat['modelo'],
             'Melhor Época': stat.get('best_epoch', 'N/A'),
             'mAP@50': f"{stat.get('best_map50', 0)*100:.2f}%" if stat.get('best_map50') else 'N/A',
             'mAP@50-95': f"{stat.get('best_map50_95', 0)*100:.2f}%" if stat.get('best_map50_95') else 'N/A',
-            'Overfitting': stat.get('overfitting_class', 'N/A'),
-            'Estabilidade': stat.get('stability_class', 'N/A'),
-            'Precision': f"{stat.get('precision', 0)*100:.2f}%" if stat.get('precision') else 'N/A',
+            'Overfitting (val/train)': overfitting_str,
+            'Estabilidade (std)': stability_str,
+            'Precision': precision_str,
             'Recall': f"{stat.get('recall', 0)*100:.2f}%" if stat.get('recall') else 'N/A',
         })
     
@@ -380,11 +397,13 @@ def generate_summary_table(all_stats, output_dir):
     print(f"   ✅ Tabela resumo salva: {csv_path}")
     
     # Exibe no console
-    print("\n" + "="*100)
+    print("\n" + "="*120)
     print("📊 TABELA RESUMO - TODOS OS MODELOS")
-    print("="*100)
+    print("="*120)
     print(df_summary.to_string(index=False))
-    print("="*100)
+    print("="*120)
+    print("\n* N/A em Precision: O CSV de treinamento do Faster R-CNN não registra precision por época.")
+    print("  Para obter precision do Faster, é necessário recalcular usando o conjunto de validação.")
     
     return df_summary
 
