@@ -252,7 +252,15 @@ def main():
     
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(params, lr=LEARNING_RATE, momentum=0.9, weight_decay=0.0005)
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=3, gamma=0.1)
+    
+    # Scheduler híbrido: CosineAnnealingWarmRestarts permite aprendizado contínuo
+    # com reinícios periódicos do LR, evitando estagnação prematura
+    # T_0=20: reinicia a cada 20 épocas inicialmente
+    # T_mult=2: dobra o período a cada reinício (20, 40, 80...)
+    # eta_min: LR mínimo para não parar de aprender completamente
+    lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+        optimizer, T_0=20, T_mult=2, eta_min=1e-6
+    )
     
     scaler = torch.amp.GradScaler('cuda')
 
