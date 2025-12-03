@@ -58,6 +58,8 @@ pip install torch torchvision ultralytics pyyaml tqdm torchmetrics pandas pillow
 
 ### 4. Baixe os Datasets
 
+> https://drive.google.com/file/d/1mBLcdwnWhHjq-pqXZEZPxrvJ9xSoEu2r/view?usp=sharing
+
 Os datasets não estão incluídos no repositório. Baixe-os e coloque na pasta `datasets/`:
 
 ```
