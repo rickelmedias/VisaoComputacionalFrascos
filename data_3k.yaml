@@ -1,8 +1,8 @@
 # data_3k.yaml - Dataset com 3k imagens de treino
 # Os datasets não estão incluídos no repositório.
-# Baixe-os separadamente e coloque na pasta 'datasets/dataset3k/'
+# Baixe-os separadamente e coloque na pasta 'dataset/dataset3k/'
 
-path: datasets/dataset3k
+path: dataset/dataset3k
 train: train/images
 val: val/images
 
