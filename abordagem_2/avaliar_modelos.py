@@ -283,93 +283,6 @@ def analyze_training_history_deep(csv_path, model_name, output_dir):
     return stats, df
 
 
-# ==============================================================================
-# 🔗 MATRIZ DE CORRELAÇÃO ENTRE MÉTRICAS
-# ==============================================================================
-
-def generate_correlation_matrix(all_dfs, output_dir):
-    """Gera matriz de correlação entre métricas de todos os modelos"""
-    print("\n🔗 Gerando Matriz de Correlação...")
-    
-    if not all_dfs:
-        print("   ⚠️ Sem dados para correlação")
-        return
-    
-    # Coleta métricas comuns de todos os modelos
-    correlation_data = []
-    
-    for model_name, df in all_dfs.items():
-        # Normaliza nomes de colunas
-        cols = df.columns
-        
-        map_col = next((c for c in cols if 'map50-95' in c.lower() or 'map50_95' in c.lower()), None)
-        map50_col = next((c for c in cols if ('map50' in c.lower() and '95' not in c)), None)
-        prec_col = next((c for c in cols if 'precision' in c.lower()), None)
-        rec_col = next((c for c in cols if 'recall' in c.lower()), None)
-        train_box = next((c for c in cols if 'train' in c.lower() and 'box' in c.lower()), None)
-        val_box = next((c for c in cols if 'val' in c.lower() and 'box' in c.lower()), None)
-        
-        # Pega valores da melhor época
-        if map_col:
-            best_idx = df[map_col].idxmax()
-            row = df.loc[best_idx]
-            
-            correlation_data.append({
-                'Modelo': model_name,
-                'mAP@50-95': row[map_col] if map_col else None,
-                'mAP@50': row[map50_col] if map50_col else None,
-                'Precision': row[prec_col] if prec_col else None,
-                'Recall': row[rec_col] if rec_col else None,
-                'Train_Box_Loss': row[train_box] if train_box else None,
-                'Val_Box_Loss': row[val_box] if val_box else None,
-            })
-    
-    if not correlation_data:
-        return
-    
-    df_corr_data = pd.DataFrame(correlation_data)
-    
-    # Remove colunas com muitos NaN
-    numeric_cols = df_corr_data.select_dtypes(include=[np.number]).columns
-    df_numeric = df_corr_data[numeric_cols].dropna(axis=1, how='all')
-    
-    if df_numeric.empty or len(df_numeric.columns) < 2:
-        print("   ⚠️ Dados insuficientes para correlação")
-        return
-    
-    # Calcula matriz de correlação
-    corr_matrix = df_numeric.corr()
-    
-    # Plota matriz de correlação
-    fig, ax = plt.subplots(figsize=(10, 8))
-    mask = np.triu(np.ones_like(corr_matrix, dtype=bool))  # Máscara para triângulo superior
-    
-    sns.heatmap(
-        corr_matrix,
-        mask=mask,
-        annot=True,
-        fmt='.2f',
-        cmap='RdBu_r',
-        center=0,
-        square=True,
-        linewidths=0.5,
-        cbar_kws={"shrink": 0.8},
-        ax=ax
-    )
-    
-    ax.set_title('Matriz de Correlação entre Métricas', fontsize=14, fontweight='bold')
-    plt.tight_layout()
-    
-    save_path = output_dir / "matriz_correlacao.png"
-    plt.savefig(save_path)
-    plt.close()
-    print(f"   ✅ Matriz de correlação salva: {save_path}")
-    
-    # Salva dados de correlação
-    csv_path = output_dir / "dados_correlacao.csv"
-    df_corr_data.to_csv(csv_path, index=False)
-    
-    return corr_matrix
 
 
 # ==============================================================================
@@ -687,7 +600,6 @@ def main():
     
     # 2. Gera análises comparativas
     generate_evolution_comparison(all_dfs, OUTPUT_DIR)
-    generate_correlation_matrix(all_dfs, OUTPUT_DIR)
     generate_bar_comparison(all_stats, OUTPUT_DIR)
     
     # 3. Gera tabela resumo final (CSV solicitado)
