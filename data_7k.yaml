@@ -1,0 +1,11 @@
+# data_7k.yaml - Dataset com 7k imagens de treino
+# Os datasets não estão incluídos no repositório.
+# Baixe-os separadamente e coloque na pasta 'datasets/dataset7k/'
+
+path: datasets/dataset7k
+train: train/images
+val: val/images
+
+nc: 4
+names: ['Danificado', 'Frasco', 'Lacrado', 'Sem_lacre']
+

@@ -1,0 +1,38 @@
+# Parâmetros de Treinamento
+epochs: 500                             # Número de épocas
+batch: 16                               # Tamanho do batch
+patience: 30                            # Agurda 30 épocas para parar
+imgsz: 640                              # Tamanho da imagem (640x640, 512x512, etc.)
+workers: 4                              # Número de workers para carregamento de dados
+device: 0                               # Dispositivo (0 para a GPU ou 'cpu' para usar a CPU)
+compile: true     
+val: true 
+exist_ok: true                          # Permite sobrescrever resultados anteriores
+
+# Configurações de Otimização
+optimizer: auto                         # Otimizador (auto, SGD, Adam, etc.)
+lr0: 0.01                               # Taxa de aprendizado inicial
+lrf: 0.01                               # Taxa de aprendizado final
+momentum: 0.937                         # Momentum do otimizador
+weight_decay: 0.0005                    # Decaimento de peso
+dropout: 0.05 
+
+# Data Augmentation (Aumentação de Dados)
+augment: true                           # Ativar aumento de dados
+hsv_h: 0.015                            # Aumento de matiz (± 1.5%)
+hsv_s: 0.7                              # Aumento de saturação (± 70%)
+hsv_v: 0.4                              # Aumento de valor (± 40%)
+degrees: 15.0                           # Rotação de -15° a +15°
+translate: 0.1                          # Translação de até 10%
+scale: 0.5                              # Escala de 50% a 150%
+shear: 10.0                             # Cisalhamento (deformação angular)
+flipud: 0.0                             # Flip vertical (não utilizado)
+fliplr: 0.5                             # Flip horizontal (50% de chance)
+mosaic: 1.0                             # Aumento de mosaico
+mixup: 0.0                              # Aumento de mixup (não utilizado)
+copy_paste: 0.0                         # Aumento de copy-paste (não utilizado)
+erasing: 0.4                            # Aumento de apagamento (eraser)
+crop_fraction: 0.8                      # Corte parcial da imagem
+
+# Outras Configurações
+rect: false                             # Usar imagens retangulares

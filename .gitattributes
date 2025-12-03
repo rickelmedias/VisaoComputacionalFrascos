@@ -1,0 +1,27 @@
+# ==============================================================================
+# GIT LFS - Large File Storage
+# ==============================================================================
+# Este arquivo configura o Git LFS para rastrear arquivos grandes.
+# 
+# SETUP NECESSÁRIO:
+# 1. Instale o Git LFS: https://git-lfs.github.com/
+#    - Ubuntu/Debian: sudo apt install git-lfs
+#    - macOS: brew install git-lfs
+#    - Windows: baixe do site oficial
+#
+# 2. Inicialize no repositório: git lfs install
+#
+# 3. Os arquivos já estão configurados abaixo, então basta fazer commit normal
+# ==============================================================================
+# Modelos treinados (Best) - PyTorch
+*.pt filter=lfs diff=lfs merge=lfs -text
+*.pth filter=lfs diff=lfs merge=lfs -text
+# Modelos ONNX (caso exporte)
+*.onnx filter=lfs diff=lfs merge=lfs -text
+# Modelos TensorRT
+*.engine filter=lfs diff=lfs merge=lfs -text
+# Outros formatos de modelo pesados
+*.h5 filter=lfs diff=lfs merge=lfs -text
+*.hdf5 filter=lfs diff=lfs merge=lfs -text
+*.pkl filter=lfs diff=lfs merge=lfs -text
+*.pickle filter=lfs diff=lfs merge=lfs -text
